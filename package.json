@@ -1,0 +1,22 @@
+{
+  "name": "proxy-server",
+  "version": "1.0.0",
+  "description": "flex-requests handling proxy server",
+  "license": "ISC",
+  "author": "Bek K",
+  "type": "module",
+  "main": "flex_requests.js",
+  "scripts": {
+    "start": "functions-framework --target=app",
+    "deploy": "gcloud functions deploy flex-proxy-server --gen2 --region=us-central1 --runtime=nodejs22 --memory=512Mi --cpu=1 --concurrency=80 --min-instances=0 --max-instances=3 --trigger-http --entry-point=app --set-env-vars GCP_PROJECT_ID=$GCP_PROJECT_ID,BASE_URL=$BASE_URL,BETA_BASE_URL=$BETA_BASE_URL --allow-unauthenticated"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^5.0.2",
+    "@google-cloud/run": "^3.2.0",
+    "@google-cloud/secret-manager": "^6.1.1",
+    "axios": "^1.13.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.6.1"
+  }
+}

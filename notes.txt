@@ -1,0 +1,8 @@
+export $(grep -v '^#' .env | xargs)
+
+echo "$GCP_PROJECT_ID"
+
+command to add new audience (app script authorization url):
+gcloud run services update flex-proxy-server --add-custom-audiences="NEW_AUDIENCE_URL" --region=us-central1
+
+
