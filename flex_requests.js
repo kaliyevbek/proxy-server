@@ -2,6 +2,7 @@ import express from 'express';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import { ServicesClient } from '@google-cloud/run';
 import axios from 'axios';
+import qs from 'qs';
 
 const app = express();
 app.use(express.json());
@@ -58,7 +59,6 @@ async function getFlexKey(secret_manager_name) {
 app.use(async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization; // "Bearer <token>"
-    
     if (!authHeader?.startsWith('Bearer ')) return res.status(401).send('Unauthorized');
 
     const token = authHeader.split(' ')[1];
@@ -67,8 +67,6 @@ app.use(async (req, res, next) => {
     const base64Payload = token.split('.')[1];
     const payloadBuffer = Buffer.from(base64Payload, 'base64');
     const payload = JSON.parse(payloadBuffer.toString());
-
-    console.log(`Audit: User ${payload.email} calling via Script ${payload.aud}`);
 
     // Authorization Check
     const allowedMembers = await getAllowedInvokers();
@@ -81,6 +79,7 @@ app.use(async (req, res, next) => {
     } 
     // In Google ID tokens, the 'email' field contains the user's email
     req.userEmail = payload.email || payload.sub || 'unknown-identity';
+    req.userAud = payload.aud || 'unknown-audience';
     next();
 
   } catch (error) {
@@ -92,9 +91,48 @@ const flexRoute = (secretName, baseUrl, forceMethod = null) => async (req, res) 
   try {
     const pathParams = req.params.path;
     const endpoint = Array.isArray(pathParams) ? pathParams.join('/') : (pathParams || '');
-    const method = forceMethod || req.method;
-    
-    console.log(`User: ${req.userEmail || 'unknown'} | ${method} -> ${baseUrl}/${endpoint}`);
+    let queryParams = req.body;
+
+    if (req.body && req.body.query) {
+      queryParams = req.body.query;
+    }
+
+    if (typeof queryParams === 'string') {
+      try {
+        queryParams = JSON.parse(queryParams);
+      } catch (e) {
+        console.error("Failed to parse queryParams string", e);
+      }
+    }
+
+    const method = forceMethod || req.body.method || req.method;
+    let payload = req.body.payload || {};
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch (e) {
+        console.error("Failed to parse payload string", e);
+      }
+    }
+
+    console.log(JSON.stringify({
+      severity: "INFO",
+      message: `Proxy: ${method} ${endpoint}`,
+      httpRequest: {
+        requestMethod: req.method,
+        baseUrl: `${baseUrl}`,
+        status: flexResponse.status,
+        remoteIp: req.ip,
+        scriptId: req.userAud 
+      },
+      labels: {
+        user_email: req.userEmail || 'unknown',
+        flex_endpoint: endpoint.split('/')[0], // e.g., "element" or "search"
+        execution_id: req.header('function-execution-id') || 'local'
+      }, 
+      queryParameters: queryParams, // Log the parameters sent for debugging
+      payload: payload // Log the parameters sent for debugging
+    }));
 
     const apiKey = await getFlexKey(secretName);
     
@@ -102,8 +140,8 @@ const flexRoute = (secretName, baseUrl, forceMethod = null) => async (req, res) 
       baseUrl, 
       endpoint, 
       method, 
-      req.query, 
-      req.body, 
+      queryParams, 
+      payload, 
       apiKey
     );
 
@@ -117,8 +155,8 @@ const flexRoute = (secretName, baseUrl, forceMethod = null) => async (req, res) 
 };
 
 // Finance: Strict GET
-app.get('/finance-report/*path', flexRoute("FLEX_FINANCE_REPORT", process.env.BASE_URL, 'GET'));
-app.get('/beta/finance-report/*path', flexRoute("FLEX_FINANCE_REPORT", process.env.BETA_BASE_URL, 'GET'));
+app.all('/finance-report/*path', flexRoute("FLEX_FINANCE_REPORT", process.env.BASE_URL, 'GET'));
+app.all('/beta/finance-report/*path', flexRoute("FLEX_FINANCE_REPORT", process.env.BETA_BASE_URL, 'GET'));
 
 // Inventory: All methods
 app.all('/inventory/*path', flexRoute("FLEX_INVENTORY_CORE", process.env.BASE_URL));
@@ -140,6 +178,19 @@ async function handleFlexRequest(baseUrl, endpoint, method, queryParams, body, a
       },
       // axios handles the query object automatically, no manual string building needed
       params: queryParams, 
+      paramsSerializer: {
+        serialize: (params) => {
+          const searchParams = new URLSearchParams();
+          Object.keys(params).forEach(key => {
+            if (Array.isArray(params[key])) {
+              params[key].forEach(v => searchParams.append(key, v));
+            } else {
+              searchParams.append(key, params[key]);
+            }
+          });
+          return searchParams.toString();
+        }
+      },
       data: method === 'GET' ? undefined : body,
       validateStatus: () => true,
       timeout: 20000 // 20 second timeout for GCP Cloud Functions
