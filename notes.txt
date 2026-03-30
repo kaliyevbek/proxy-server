@@ -6,3 +6,6 @@ command to add new audience (app script authorization url):
 gcloud run services update flex-proxy-server --add-custom-audiences="NEW_AUDIENCE_URL" --region=us-central1
 
 
+curl -X GET -H "Authorization: Bearer $(gcloud auth print-access-token)" http://localhost:8080/finance-report/element/b8e54f32-eb30-4163-8d2a-d989f2aa9b00/header-data/?_dc=1773151210270&codeList=documentName&codeList=personResponsibleId&codeList=clientId&codeList=venueId&codeList=vendorId&codeList=billToId&codeList=customField1Value&codeList=salesTaxRuleId&codeList=statusId
+
+curl -X GET -H "Authorization: Bearer $(gcloud auth print-access-token)" http://localhost:8080/finance-report

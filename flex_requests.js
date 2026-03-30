@@ -121,7 +121,6 @@ const flexRoute = (secretName, baseUrl, forceMethod = null) => async (req, res) 
       httpRequest: {
         requestMethod: req.method,
         baseUrl: `${baseUrl}`,
-        status: flexResponse.status,
         remoteIp: req.ip,
         scriptId: req.userAud 
       },
